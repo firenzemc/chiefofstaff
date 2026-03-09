@@ -4,7 +4,7 @@
 
 Turns conversations into coordinated action — across humans, systems, and agents.
 
-Every meeting ends. Most decisions don't go anywhere. Mainframe is the coordination layer that changes that — receiving what conversations produce, routing each piece to the right place, and following up until there's a result. It doesn't make decisions. It makes sure decisions don't get lost.
+Every conversation ends. Most of what matters doesn't go anywhere. Mainframe is the coordination layer that changes that — receiving what conversations produce, routing each piece to the right place, and following up until there's a result. It doesn't make decisions. It makes sure decisions don't get lost.
 
 ---
 
@@ -63,7 +63,7 @@ A 1-hour meeting produces dozens of intents. Traditional meeting tools turn thes
 | Data query raised | Lookup triggered, result surfaced in context |
 | Follow-up needed with someone external | Draft prepared, human confirms before send |
 
-The meeting ends. Mainframe keeps working.
+The conversation ends. Mainframe keeps working.
 
 ---
 
@@ -141,4 +141,4 @@ Apache 2.0 — see [LICENSE](LICENSE).
 
 ---
 
-*The meeting ended. The work just started.*
+*The conversation ended. The work just started.*
