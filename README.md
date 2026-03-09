@@ -30,6 +30,29 @@ Decisions are born in meetings. They die in the minutes after.
 
 ---
 
+## Key Differentiators
+
+### 1. Local Microphone Capture — The Only Solution for In-Person Meetings
+
+Every other product requires cloud recording or platform API access. Mainframe captures directly from local mic—for offline meetings, interviews, and field conversations.
+
+### 2. System Audio Loopback — No Platform Recording Permissions
+
+Don't want to ask IT for Zoom/Teams recording permissions? Mainframe can capture system audio directly—no cloud dependency, no admin approval needed.
+
+### 3. Streaming + Batch Dual Mode
+
+- **Streaming**: Real-time intent inference with small models (low latency)
+- **Batch**: Full post-meeting analysis with large models (high accuracy, human-correctable)
+
+Both modes coexist. Real-time for immediate alerts, batch for precision.
+
+### 4. GitHub Integration
+
+Technical team decisions? Meeting outcomes automatically become GitHub issues or PRs. No copy-paste between Slack and repo.
+
+---
+
 ## Architecture
 
 ```
@@ -38,40 +61,62 @@ Decisions are born in meetings. They die in the minutes after.
 ├─────────────────────────────────────────────────────────────────────┤
 │                                                                       │
 │  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐              │
-│  │   INPUT     │    │  PROCESS   │    │ UNDERSTAND │              │
+│  │    INPUT    │    │  PROCESS    │    │ UNDERSTAND  │              │
 │  ├─────────────┤    ├─────────────┤    ├─────────────┤              │
-│  │ • Feishu    │    │ • Whisper   │    │ • LLM       │              │
-│  │ • Zoom      │───▶│ • Diarize  │───▶│ • Intent    │              │
-│  │ • Upload    │    │ • Segment  │    │ • Extract   │              │
+│  │ • Feishu    │    │ • Whisper   │    │ • Streaming │              │
+│  │ • Zoom      │    │ • Diarize   │───▶│ • Batch     │              │
+│  │ • Local Mic │    │ • Segment   │    │ • Context   │              │
+│  │ • Loopback  │    │ • Chunking  │    │   Linking   │              │
+│  │ • Upload    │    │             │    │             │              │
 │  └─────────────┘    └─────────────┘    └──────┬──────┘              │
 │                                                │                     │
 │  ┌─────────────┐    ┌─────────────┐           │                     │
-│  │   AUDIT     │◀───│   ROUTER    │◀──────────┤                     │
+│  │    AUDIT    │◀───│   ROUTER    │◀──────────┤                     │
 │  ├─────────────┤    ├─────────────┤    ┌──────▼──────┐             │
-│  │ • Records   │    │ • Rules    │    │ • Connectors│             │
-│  │ • Approvals │◀───│ • Agent Map │───▶│ • Webhooks │             │
-│  │ • Trace     │    │ • Triggers │    │ • APIs     │             │
-│  └─────────────┘    └─────────────┘    └─────────────┘             │
+│  │ • Records   │    │ • Rules    │    │ • CONNECTORS │             │
+│  │ • Approvals │◀───│ • Maps     │───▶│ • IM        │             │
+│  │ • Trace     │    │ • Triggers │    │ • Email     │             │
+│  │ • Compliance│    │             │    │ • Tasks     │             │
+│  └─────────────┘    └─────────────┘    │ • GitHub   │             │
+│                                       │ • ERP/CRM  │             │
+│                                       └─────────────┘             │
 │                                                                       │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
-### The Core Pipeline
+### Target Routes
+
+| Target | Examples |
+|--------|----------|
+| **IM** | 飞书, 企业微信, Slack |
+| **Email** | Gmail, Outlook, 企业邮箱 |
+| **Tasks** | 飞书任务, Jira, Linear |
+| **Code** | GitHub Issues, GitLab MR |
+| **Business** | ERP, CRM, WMS |
+
+---
+
+## Directory Structure
 
 ```
-Human Meeting (audio/video) 
-          ↓
-    ┌─────────────────────┐
-    │    Mainframe        │
-    │  Capture →          │
-    │  Understand →       │
-    │  Route →            │
-    │  Close the loop    │
-    └─────────────────────┘
-          ↓           ↓           ↓
-    Business    Personal    Knowledge
-    Agent       Agent       Base
-    (ERP/CRM)  (Tasks)     (Decisions)
+mainframe/
+├── src/mainframe/
+│   ├── input/              # Input adapters
+│   │   ├── api/            # Feishu, Zoom webhook
+│   │   ├── local/          # Mic capture, loopback
+│   │   └── upload/         # File upload
+│   ├── processing/         # Audio processing
+│   │   ├── transcription/  # Whisper
+│   │   └── diarization/   # Speaker separation
+│   ├── understanding/     # Intent extraction
+│   │   ├── streaming/      # Real-time inference
+│   │   └── batch/         # Post-meeting analysis
+│   ├── router/            # Routing engine
+│   ├── connectors/        # (Commercial, closed)
+│   └── audit/             # Logging & compliance
+├── docs/
+├── tests/
+└── examples/
 ```
 
 ---
@@ -80,20 +125,22 @@ Human Meeting (audio/video)
 
 ### Apache 2.0 Licensed (This Repo)
 
-The core infrastructure—the parts that define *how* meetings become actions:
+The core infrastructure:
 
-- **Transcription Pipeline** — Whisper integration, speaker diarization
-- **Intent Extraction Framework** — LLM-based structured extraction
+- **Input Adapters** — Local mic, loopback, API, upload
+- **Transcription Pipeline** — Whisper integration, diarization
+- **Intent Extraction Framework** — Streaming + batch LLM extraction
 - **Routing Protocol** — Rule engine, agent mapping
 - **Audit Interface** — Execution logging, approval workflows
 
 ### Commercial (Closed Source)
 
-Where our differentiation lives:
+Our differentiation:
 
+- **IM Connectors** — 飞书, 企业微信, Slack (beyond basic)
+- **GitHub Integration** — Issues, PRs, Projects
 - **ERP Connectors** — WMS, ERP, CRM integrations
 - **Industry Models** — Domain-specific semantic understanding
-- **Enterprise Features** — SSO, audit compliance, SLA
 
 ---
 
@@ -121,15 +168,17 @@ Mainframe brings the mainframe philosophy to the agent era: **one system to rout
 
 ## Roadmap
 
-- [ ] **Phase 1**: Audio → Structured Action Map (no integrations)
-- [ ] **Phase 2**: System integrations (ERP, CRM, WMS)  
-- [ ] **Phase 3**: Real-time meeting copilot
+- [ ] **Phase 1**: Local mic + Whisper → Structured Action Map
+- [ ] **Phase 2**: Streaming intent inference + batch refinement
+- [ ] **Phase 3**: IM, Email, Task integrations
+- [ ] **Phase 4**: GitHub connector + real-time copilot
+- [ ] **Phase 5**: Enterprise ERP/CRM integrations
 
 ---
 
 ## Philosophy
 
-> "The meeting ended" shouldn't mean "the decision disappeared."
+> "The meeting ended" shouldn't mean "The decision disappeared."
 
 We believe:
 
@@ -137,9 +186,11 @@ We believe:
 
 2. **The gap between meeting and system is a trillion-dollar problem.** Companies spend billions on ERP, CRM, and "AI assistants"—but the bridge between human conversation and these systems is broken.
 
-3. **Open core wins.** The routing protocol should be transparent. The integrations should be competitive moats.
+3. **In the AI era, the half-life of technical knowledge is ~18 months.** That's why we open-source the architecture layer—protocols should be community-owned, while integrations are our competitive moat.
 
-4. **Agents will eventually maintain agents.** Once Mainframe routes decisions correctly, agents will start closing their own loops. The future is agents auditing agents.
+4. **One day, agents will maintain agents.** Once Mainframe routes decisions correctly, agents will start auditing each other. The future is agents monitoring agents. We're building the protocol for that future.
+
+5. **Local-first, cloud-optional.** Your meeting data shouldn't need to go to the cloud just to be understood. Process locally when possible, route globally when needed.
 
 ---
 
@@ -147,7 +198,7 @@ We believe:
 
 Contributions welcome. This is an early-stage project—architecture opinions strongly encouraged.
 
-```
+```bash
 git clone git@github.com:firenzemc/mainframe.git
 cd mainframe
 pip install -e .

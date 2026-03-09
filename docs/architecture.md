@@ -1,334 +1,289 @@
-# 会议 Mainframe - 技术架构设计
+# 会议 Mainframe - Technical Architecture
 
-## 1. 竞品调研
-
-| 项目 | Stars | 说明 | 可借鉴点 |
-|------|-------|------|---------|
-| Zackriya-Solutions/meetily | 10,247 | 本地优先AI会议助手，Whisper转录+Ollama总结 | 本地处理模式 |
-| langgenius/dify | 131,687 | 生产级Agent工作流开发平台 | 工作流编排 |
-| deepset-ai/haystack | 24,435 | 开源AI编排框架，构建RAG | 组件化设计 |
-| neuml/txtai | 12,264 | 语义搜索+LLM编排 | 轻量级方案 |
-
-**结论**：没有直接竞品。现有方案都是"会议纪要"，不是"消息总线"。
-
----
-
-## 2. 系统架构图
+## Overview
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│                         会议 Mainframe                                │
+│                         MAINFRAME                                    │
 ├─────────────────────────────────────────────────────────────────────┤
 │                                                                       │
 │  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐              │
-│  │   输入层     │    │   处理层     │    │   理解层     │              │
-│  │  Input      │    │  Process    │    │  Understand │              │
+│  │    INPUT    │    │  PROCESS    │    │ UNDERSTAND  │              │
 │  ├─────────────┤    ├─────────────┤    ├─────────────┤              │
-│  │ • 飞书API   │    │ • Whisper   │    │ • LLM调用   │              │
-│  │ • 文件上传  │───▶│ • 音频切片   │───▶│ • 意图识别  │              │
-│  │ • Webhook  │    │ • 说话人分离 │    │ • 结构化   │              │
+│  │ • Feishu    │    │ • Whisper   │    │ • Streaming │              │
+│  │ • Zoom      │    │ • Diarize   │───▶│ • Batch     │              │
+│  │ • Local Mic │    │ • Segment   │    │ • Context   │              │
+│  │ • Loopback  │    │ • Chunking  │    │   Linking   │              │
+│  │ • Upload    │    │             │    │             │              │
 │  └─────────────┘    └─────────────┘    └──────┬──────┘              │
 │                                                │                     │
 │  ┌─────────────┐    ┌─────────────┐           │                     │
-│  │   审计层     │◀───│   路由层     │◀──────────┤                     │
-│  │  Audit      │    │   Router    │           │                     │
+│  │    AUDIT    │◀───│   ROUTER    │◀──────────┤                     │
 │  ├─────────────┤    ├─────────────┤    ┌──────▼──────┐             │
-│  │ • 执行记录  │    │ • 规则引擎  │    │ • 业务连接  │             │
-│  │ • 人工确认  │◀───│ • Agent映射 │───▶│ • Connector │             │
-│  │ • 追溯查询  │    │ • 触发动作  │    │ • Webhook  │             │
-│  └─────────────┘    └─────────────┘    └─────────────┘             │
+│  │ • Records   │    │ • Rules    │    │ • CONNECTORS │             │
+│  │ • Approvals │◀───│ • Maps     │───▶│ • IM        │             │
+│  │ • Trace     │    │ • Triggers │    │ • Email     │             │
+│  │ • Compliance│    │             │    │ • Tasks     │             │
+│  └─────────────┘    └─────────────┘    │ • GitHub   │             │
+│                                       │ • ERP/CRM  │             │
+│                                       └─────────────┘             │
 │                                                                       │
 └─────────────────────────────────────────────────────────────────────┘
-
-开源范围：输入层 + 处理层 + 理解层 + 路由层协议
-闭源范围：Connector（商业差异化）
 ```
 
----
+## Layer 1: Input (输入层)
 
-## 3. 核心模块接口定义
+### Sources
 
-### 3.1 输入层 (Input Layer)
+| Source | Type | Description |
+|--------|------|-------------|
+| **Feishu API** | Real-time | 飞书会议 webhook |
+| **Zoom Webhook** | Real-time | Zoom 会议 webhook |
+| **Local Mic** | Real-time | 本地麦克风采集（线下会议） |
+| **Loopback** | Real-time | 系统音频捕获（不依赖平台API） |
+| **Upload** | Batch | 文件上传（mp3, m4a, wav） |
 
-```python
-# 输入适配器接口
-class MeetingSource(Protocol):
-    async def fetch_audio() -> bytes: ...
-    async def get_metadata() -> MeetingMetadata: ...
+### Module: `src/mainframe/input/`
 
-# 飞书实现
-class FeishuMeetingSource(MeetingSource):
-    def __init__(self, app_id: str, app_secret: str):
-        self.client = FeishuClient(app_id, app_secret)
-    
-    async def fetch_audio(self, meeting_id: str) -> bytes:
-        # 获取飞书会议录音
-        recording_url = await self.client.get_recording(meeting_id)
-        return await download_audio(recording_url)
-    
-    async def get_metadata(self, meeting_id: str) -> MeetingMetadata:
-        return await self.client.get_meeting_info(meeting_id)
-
-# 文件上传实现
-class FileUploadSource(MeetingSource):
-    async def fetch_audio(self, file_path: str) -> bytes:
-        return Path(file_path).read_bytes()
+```
+input/
+├── api/
+│   ├── feishu.py      # 飞书 API adapter
+│   └── zoom.py        # Zoom webhook handler
+├── local/
+│   ├── mic.py         # Local microphone capture
+│   └── loopback.py    # System audio loopback
+└── upload/
+    └── handler.py     # File upload handler
 ```
 
-### 3.2 处理层 (Processing Layer)
+## Layer 2: Processing (处理层)
 
-```python
-# 转录服务
-class TranscriptionService:
-    def __init__(self, model: str = "base"):
-        self.model = model  # whisper-small/base/large
-    
-    async def transcribe(self, audio: bytes) -> Transcript:
-        # 调用 Whisper 转录
-        result = await whisper_transcribe(audio, self.model)
-        return Transcript(
-            segments=result.segments,
-            language=result.language,
-            duration=result.duration
-        )
+### Transcription
 
-# 说话人分离 (Diarization)
-class SpeakerDiarization:
-    async def identify(self, audio: bytes, transcript: Transcript) -> List[SpeakerSegment]:
-        # 使用 pyannote.audio 或类似库
-        return await pyannote.diarize(audio)
+- **faster-whisper**: GPU-accelerated Whisper
+- **Streaming mode**: Chunked transcription for real-time
+- **Batch mode**: Full file transcription
+
+### Diarization
+
+- **pyannote.audio**: Speaker diarization
+- Output: `(speaker_id, timestamp, text)` segments
+
+### Module: `src/mainframe/processing/`
+
+```
+processing/
+├── transcription/
+│   ├── whisper.py     # Faster-Whisper wrapper
+│   ├── streamer.py    # Streaming transcription
+│   └── chunker.py     # Audio chunking
+└── diarization/
+    └── pyannote.py    # Speaker separation
 ```
 
-### 3.3 理解层 (Understanding Layer) - 核心
+## Layer 3: Understanding (理解层) - Core
+
+### Streaming Intent Inference
+
+- Small model (e.g., Qwen-0.5B)
+- Low latency (< 2s)
+- Real-time intent alerts
+
+### Batch Analysis
+
+- Large model (GPT-4 / Claude / Qwen-Max)
+- High accuracy
+- Human-correctable
+
+### Context Linking
+
+- Cross-segment entity tracking
+- Topic modeling
+- Decision dependency graph
+
+### Module: `src/mainframe/understanding/`
+
+```
+understanding/
+├── streaming/
+│   ├── intent.py      # Real-time intent inference
+│   └── alerts.py      # Alert triggers
+├── batch/
+│   ├── full_analysis.py   # Post-meeting analysis
+│   ├── correction.py      # Human-in-the-loop correction
+│   └── context.py         # Cross-segment linking
+└── models/
+    ├── intents.py     # Intent type definitions
+    └── entities.py    # Entity extraction
+```
+
+## Layer 4: Router (路由层)
+
+### Target Types
+
+| Target | Examples |
+|--------|----------|
+| **IM** | 飞书, 企业微信, Slack |
+| **Email** | Gmail, Outlook |
+| **Tasks** | 飞书任务, Jira, Linear |
+| **Code** | GitHub Issues, PRs |
+| **Business** | ERP, CRM, WMS |
+
+### Rule Engine
 
 ```python
-from pydantic import BaseModel
-from typing import List, Optional
-from enum import Enum
+class RouteRule:
+    intent_type: IntentType
+    condition: Callable[[Intent], bool]
+    target: str  # connector identifier
+```
 
+### Module: `src/mainframe/router/`
+
+```
+router/
+├── rules.py           # Rule definitions
+├── matcher.py         # Intent-to-rule matching
+├── targets.py         # Target registry
+└── executor.py       # Action execution
+```
+
+## Layer 5: Connectors (集成层) - Commercial
+
+### Open Source
+
+- Basic webhook (generic)
+
+### Commercial
+
+| Connector | Description |
+|-----------|-------------|
+| **飞书** | 消息 + 任务 |
+| **企业微信** | 消息 + 审批 |
+| **Slack** | 消息 + 频道 |
+| **GitHub** | Issues + PRs |
+| **Jira** | Issues |
+| **Linear** | Issues |
+| **旺店通** | WMS |
+| **聚水潭** | WMS |
+| **Salesforce** | CRM |
+
+### Module: `src/mainframe/connectors/`
+
+```
+connectors/
+├── im/
+│   ├── feishu.py
+│   ├── slack.py
+│   └── wecom.py
+├── email/
+│   └── smtp.py
+├── tasks/
+│   ├── jira.py
+│   └── linear.py
+├── github/
+│   └── api.py
+└── erp/
+    ├── wangdiantong.py
+    └── jushuitan.py
+```
+
+## Layer 6: Audit (审计层)
+
+### Functions
+
+- Execution logging
+- Human approval workflow
+- Compliance tracking
+- Queryable history
+
+### Module: `src/mainframe/audit/`
+
+```
+audit/
+├── logger.py         # Execution logging
+├── approval.py       # Human approval queue
+├── history.py        # Query interface
+└── compliance.py     # Audit trail
+```
+
+## Data Models
+
+### Intent
+
+```python
 class IntentType(str, Enum):
-    DECISION = "decision"           # 决策
-    ACTION_ITEM = "action_item"    # 待办
-    QUERY = "query"                 # 查询需求
-    RISK = "risk"                   # 风险
-    PROMISE = "promise"             # 承诺
-    INFO = "info"                   # 信息分享
+    DECISION = "decision"
+    ACTION_ITEM = "action_item"
+    QUERY = "query"
+    RISK = "risk"
+    PROMISE = "promise"
+    INFO = "info"
 
-class ExtractedIntent(BaseModel):
+class Intent(BaseModel):
+    id: str
     type: IntentType
     content: str
     confidence: float  # 0.0-1.0
     speaker: str
-    timestamp: float   # 会议中的时间戳
-    entities: List[dict]  # 提取的实体 (人名、日期、数量等)
-
-class MeetingUnderstanding(BaseModel):
-    intents: List[ExtractedIntent]
-    summary: str
-    key_decisions: List[str]
-    action_items: List[dict]
-    risks: List[str]
-
-# LLM 意图提取服务
-class IntentExtractionService:
-    def __init__(self, llm_client: LLMClient):
-        self.llm = llm_client
-    
-    async def extract(self, transcript: Transcript) -> MeetingUnderstanding:
-        # 构建 prompt
-        prompt = self._build_prompt(transcript)
-        
-        # 调用 LLM
-        response = await self.llm.chat([
-            {"role": "system", "content": INTENT_EXTRACTION_PROMPT},
-            {"role": "user", "content": prompt}
-        ])
-        
-        # 解析 JSON 响应
-        return MeetingUnderstanding.model_validate_json(response.content)
-
-INTENT_EXTRACTION_PROMPT = """
-你是一个会议分析专家。请分析以下会议记录，提取结构化信息。
-
-输出 JSON 格式：
-{
-  "intents": [
-    {
-      "type": "decision|action_item|query|risk|promise|info",
-      "content": "具体内容",
-      "confidence": 0.0-1.0,
-      "speaker": "说话人",
-      "timestamp": 时间戳(秒),
-      "entities": [{"type": "person|date|number|...", "value": "..."}]
-    }
-  ],
-  "summary": "会议总结(100字)",
-  "key_decisions": ["决策1", "决策2"],
-  "action_items": [{"who": "人", "what": "任务", "when": "日期"}],
-  "risks": ["风险1", "风险2"]
-}
-
-会议记录：
-{transcript}
-"""
+    timestamp: float
+    entities: List[Entity]
 ```
 
-### 3.4 路由层 (Router Layer)
+### MeetingRecord
 
 ```python
-from dataclasses import dataclass
-from typing import Callable, Awaitable
-
-@dataclass
-class RouteRule:
-    intent_type: IntentType
-    condition: Callable[[ExtractedIntent], bool]
-    target: str  # agent identifier or webhook URL
-
-class Router:
-    def __init__(self):
-        self.rules: List[RouteRule] = []
-        self.default_route = "human-review"
-    
-    def add_rule(self, rule: RouteRule):
-        self.rules.append(rule)
-    
-    async def route(self, intent: ExtractedIntent) -> str:
-        for rule in self.rules:
-            if rule.intent_type == intent.type and rule.condition(intent):
-                return rule.target
-        return self.default_route
-
-# 预定义规则
-DEFAULT_ROUTING_RULES = [
-    RouteRule(
-        intent_type=IntentType.DECISION,
-        condition=lambda i: i.confidence > 0.8,
-        target="knowledge-base"
-    ),
-    RouteRule(
-        intent_type=IntentType.ACTION_ITEM,
-        condition=lambda i: True,
-        target="task-manager"
-    ),
-    RouteRule(
-        intent_type=IntentType.QUERY,
-        condition=lambda i: True,
-        target="data-connector"
-    ),
-]
+class MeetingRecord(BaseModel):
+    id: str
+    source: str  # feishu, zoom, local, upload
+    start_time: datetime
+    end_time: datetime
+    transcript: List[Segment]
+    intents: List[Intent]
+    routes: List[RouteRecord]
+    status: str  # processing, completed, approved
 ```
 
-### 3.5 集成层 (Connector Layer) - 闭源
+## MVP Implementation
 
-```python
-# Connector 基类 (抽象)
-class Connector(ABC):
-    @abstractmethod
-    async def execute(self, action: dict) -> ExecutionResult: ...
+### Core Files (~590 lines)
 
-# 具体 Connector 实现
-class WangdianTongConnector(Connector):
-    async def execute(self, action: dict) -> ExecutionResult:
-        # 调用旺店通 API
-        pass
+| File | Lines | Purpose |
+|------|-------|---------|
+| `main.py` | 50 | FastAPI entry |
+| `models.py` | 80 | Pydantic definitions |
+| `transcription.py` | 60 | Whisper wrapper |
+| `intent_extraction.py` | 100 | LLM extraction |
+| `router.py` | 80 | Rule engine |
+| `connectors/mock.py` | 40 | Mock connector |
+| `audit.py` | 50 | Audit log |
+| `tests/test_pipeline.py` | 100 | E2E tests |
+| **Total** | **~560** | |
 
-class FeishuConnector(Connector):
-    async def execute(self, action: dict) -> ExecutionResult:
-        # 发送飞书消息 / 创建任务
-        pass
-```
+### Timeline: 5 days
 
-### 3.6 审计层 (Audit Layer)
+| Day | Task |
+|-----|------|
+| 1 | Project setup + Whisper |
+| 2 | LLM intent extraction |
+| 3 | Router rules |
+| 4 | Mock connector + API |
+| 5 | Audit + tests |
 
-```python
-@dataclass
-class ExecutionRecord:
-    intent_id: str
-    route: str
-    connector: str
-    status: str  # pending/approved/executed/failed
-    created_at: datetime
-    executed_at: Optional[datetime]
-    result: Optional[dict]
+## Open Source Strategy
 
-class AuditLog:
-    def __init__(self, db: Database):
-        self.db = db
-    
-    async def record(self, record: ExecutionRecord):
-        await self.db.insert("audit_log", record.model_dump())
-    
-    async def query(self, meeting_id: str) -> List[ExecutionRecord]:
-        return await self.db.query("audit_log", meeting_id=meeting_id)
-```
+### Apache 2.0 (This Repo)
 
----
+- Input adapters
+- Processing pipeline
+- Understanding framework
+- Routing protocol
+- Audit interface
 
-## 4. MVP 实现路径
+### Commercial
 
-### 4.1 核心文件清单
-
-| 文件 | 功能 | 预估行数 |
-|------|------|---------|
-| `main.py` | FastAPI 入口，API 路由 | 50 |
-| `models.py` | Pydantic 模型定义 | 80 |
-| `transcription.py` | Whisper 转录封装 | 60 |
-| `intent_extraction.py` | LLM 意图提取 | 100 |
-| `router.py` | 路由规则引擎 | 80 |
-| `connectors/base.py` | Connector 抽象接口 | 30 |
-| `connectors/mock.py` | Mock Connector (MVP用) | 40 |
-| `audit.py` | 审计日志 | 50 |
-| `tests/test_pipeline.py` | 端到端测试 | 100 |
-| **总计** | | **~590行** |
-
-### 4.2 MVP 时间估算
-
-| 阶段 | 任务 | 天数 |
-|------|------|------|
-| 1 | 项目初始化 + Whisper 集成 | 0.5 |
-| 2 | LLM 意图提取 (prompt engineering) | 1 |
-| 3 | 路由规则引擎 | 0.5 |
-| 4 | Mock Connector + API 封装 | 1 |
-| 5 | 审计日志 + 简单 Web UI | 1 |
-| 6 | 测试 + 调优 | 1 |
-| **总计** | | **5天** |
-
-### 4.3 技术栈
-
-- **后端**: FastAPI (Python 3.11+)
-- **转录**: faster-whisper
-- **LLM**: OpenAI API / Anthropic (可插拔)
-- **数据库**: SQLite (MVP) / PostgreSQL (生产)
-- **前端**: 简单 HTML + JS (MVP)
-
----
-
-## 5. 开源策略
-
-### 开源范围 (Core)
-```
-meeting-mainframe-core/
-├── src/
-│   ├── transcription/     # Whisper 封装
-│   ├── understanding/     # LLM 意图提取
-│   ├── router/            # 路由协议
-│   └── audit/             # 审计接口
-├── tests/
-├── README.md
-└── LICENSE
-```
-
-### 闭源范围 (Commercial)
-- `connectors/wangdiantong.py` - 旺店通集成
-- `connectors/erp.py` - ERP 集成
-- `ui/` - 完整 Web 界面
-
----
-
-## 6. 下一步
-
-1. ✅ 架构设计完成
-2. ⏳ 代码实现 (5天)
-3. ⏳ 开源 Core 模块
-4. ⏳ 商业 Connector 开发
+- IM connectors (飞书, Slack, etc.)
+- GitHub integration
+- ERP/CRM/WMS connectors
+- Industry-specific models
