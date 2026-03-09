@@ -1,10 +1,10 @@
 # mainframe
 
-> Conversation orchestration for the agentic era.
+> The chief of staff for your agents.
 
-Every meeting ends. Most decisions don't go anywhere.
+Turns conversations into coordinated action — across humans, systems, and agents.
 
-Mainframe is the orchestration layer that changes that—turning conversational output into structured agent tasks, routing them to the right systems and agents, and supervising execution until there's a result.
+Every meeting ends. Most decisions don't go anywhere. Mainframe is the coordination layer that changes that — receiving what conversations produce, routing each piece to the right place, and following up until there's a result. It doesn't make decisions. It makes sure decisions don't get lost.
 
 ---
 
@@ -14,7 +14,7 @@ Meetings are the highest-density decision-making events in any organization. But
 
 The root cause isn't that people are lazy. It's that **there's no system designed to receive what a meeting produces.**
 
-LLMs can now extract decisions, commitments, and open questions from conversation with high accuracy. The missing piece is an orchestration layer that knows what to do with them.
+LLMs can now extract decisions, commitments, and open questions from conversation with high accuracy. The missing piece is an coordination layer that knows what to do with them.
 
 That's Mainframe.
 
@@ -30,7 +30,7 @@ When a conversation ends, Mainframe:
    - A human who made a commitment
    - An external system (CRM, ERP, task tracker)
    - An agent that can execute or research autonomously
-4. **Orchestrates** — spawns and supervises agents as needed, waits for results, handles failures
+4. **Coordinates** — spawns and supervises agents as needed, waits for results, handles failures
 5. **Closes the loop** — surfaces results back to the relevant people and systems
 
 The conversation is the input. Completed work is the output.
@@ -45,7 +45,7 @@ Mainframe is built for a world where agents are first-class participants in orga
 - **Agents can call Mainframe**: Other agents in your system can use Mainframe's routing protocol to dispatch work that originates from conversation, not just from code.
 - **Supervision is built in**: Spawned agents report back through Mainframe's audit layer. Nothing disappears silently.
 
-This is what separates an orchestrator from a router. A router sends a message. An orchestrator owns the outcome.
+This is what separates an coordinator from a router. A router sends a message. An coordinator owns the outcome.
 
 ---
 
@@ -78,7 +78,7 @@ The meeting ends. Mainframe keeps working.
         ↓
   ┌─────┴──────┐
   ↓            ↓
-[ Connectors ] [ Agent Orchestrator ]
+[ Connectors ] [ Agent Coordinator ]
   IM, CRM,       spawn → supervise → collect
   ERP, Git       → surface results
         ↓
@@ -108,7 +108,7 @@ Each module ships with a `CONTEXT.md` defining its purpose, interfaces, and cons
 
 | Component | License |
 |-----------|---------|
-| Core orchestration engine | Apache 2.0 |
+| Core coordination engine | Apache 2.0 |
 | IM connectors (Feishu, Slack, GitHub, Email) | Apache 2.0 |
 | Business connectors (ERP, CRM, WMS) | Commercial |
 | Industry-specific semantic models | Commercial |
