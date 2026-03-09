@@ -1,4 +1,4 @@
-# mainframe
+# chiefofstaff
 
 > The chief of staff for your agents.
 
