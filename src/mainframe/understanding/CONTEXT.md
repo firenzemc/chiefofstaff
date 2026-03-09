@@ -14,10 +14,11 @@ This is the core differentiator. Not just transcription—understanding what dec
 |------|-------------|
 | DECISION | A decision made in the meeting |
 | ACTION_ITEM | A task assigned to someone |
-| QUERY | A request for information |
-| RISK | A risk or concern raised |
-| PROMISE | A commitment made |
+| OPEN_QUESTION | A question raised that wasn't answered |
+| COMMITMENT | A promise or commitment made |
 | INFO | Information shared |
+
+> **Note**: `RISK` type is planned for Phase 2 (multi-turn context).
 
 ### Two Modes
 
