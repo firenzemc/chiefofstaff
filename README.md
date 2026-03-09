@@ -1,93 +1,126 @@
 # mainframe
 
-> The meeting layer for multi-agent systems.
+> Intent routing for the agentic era.
 
-**One-liner:** Every meeting is a decision. Most are lost. Mainframe routes them.
+**If IFTTT connected apps, Mainframe connects conversations to agents.**
 
 ---
 
 ## What is this?
 
-Mainframe is **not** a meeting notes tool. It's a message bus for multi-agent systems where the source of truth is human conversation.
+Mainframe is an **intent routing engine**. It listens to human conversations, extracts structured intent, and routes it to the right agents and systems—automatically.
 
-While every company runs three types of agents today—business agents (ERP, CRM), personal agents (AI assistants), and the meetings themselves—there's a fundamental disconnect: **decisions are made in meetings but disappear the moment the meeting ends.**
+The upstream can be anything: a meeting, a voice memo, a Slack thread, an email. The downstream can be anything: a task system, a CRM, a GitHub repo, an ERP. The core is the routing layer in between.
 
-Mainframe bridges this gap. It captures, understands, and routes every decision, query, and commitment from your meetings to the right systems and agents.
+```
+[ Conversation ] → [ Intent Extraction ] → [ Router ] → [ Agent / System ]
+```
+
+This is the missing infrastructure layer for the agentic era. LLMs are getting better at acting. What's missing is a reliable way to turn human conversation into structured agent instructions.
 
 ---
 
 ## The Problem
 
-| Agent Type | Examples | Knows | Doesn't Know |
-|-----------|----------|-------|--------------|
-| **Business Agent** | ERP, CRM, WMS | System state, history | What's being decided in meetings |
-| **Personal Agent** | Your AI assistant | Your tasks, context | The meeting's full context |
-| **Meeting Itself** | Voice, video, discussion | Every decision and intent | How to write to systems |
+Every organization runs agents today—ERP agents, CRM agents, AI assistants. But they're all blind to the highest-density source of human intent: **conversation**.
 
-**Meeting is the highest-density decision-making event in any organization. But it's also the biggest blind spot in your agent infrastructure.**
+Decisions are made in meetings. Commitments are made in calls. Priorities are set in Slack threads. None of it reaches your agents automatically. Someone has to manually bridge the gap—and most of the time, they don't.
+
+Mainframe closes this loop.
 
 ---
 
-## Key Differentiators
+## How It Works
 
-### 1. Local Microphone Capture
-The only solution for in-person meetings—no cloud recording required.
+1. **Ingest** — Connect any conversation source (meeting audio, voice memo, chat transcript, API stream)
+2. **Understand** — Extract structured intent: decisions, action items, queries, commitments, open questions
+3. **Route** — Match intent to target: which agent, which system, which person
+4. **Deliver** — Write to the right place: task created, CRM updated, GitHub issue opened, message sent
+5. **Learn** — Every human correction feeds back into routing accuracy for your domain
 
-### 2. System Audio Loopback
-No platform recording permissions needed—captures directly from system audio.
+---
 
-### 3. Streaming + Batch Dual Mode
-- **Streaming**: Real-time intent inference (low latency)
-- **Batch**: Post-meeting full analysis (high accuracy, human-correctable)
+## Use Cases
 
-### 4. GitHub Integration
-Technical team decisions automatically become GitHub issues or PRs.
+### Meetings → Action
+The highest-signal use case. A 1-hour meeting produces dozens of intents. Mainframe routes all of them without anyone taking notes.
+
+### Voice Memo → Task
+Record a thought on the way to work. Mainframe extracts the intent and creates the task before you sit down.
+
+### Support Call → CRM
+Customer says "I need this by Friday." Mainframe writes it to the CRM. No manual entry.
+
+### Engineering Sync → GitHub
+"Let's file a bug for that." Mainframe opens the issue. Assigns it. Labels it.
 
 ---
 
 ## Architecture
 
 ```
-INPUT → PROCESSING → UNDERSTANDING → ROUTER → CONNECTORS → AUDIT
-         ↓              ↓              ↓           ↓            ↓
-    Local Mic      Whisper      Intent      Rules      IM/Email
-    Loopback       Diarize      Extraction  Targets    Tasks/Git
-    API            Chunking     Context     Triggers   ERP/CRM
+src/mainframe/
+├── input/          # Adapters: local mic, system audio, API, file upload
+├── processing/     # Transcription (Whisper), speaker diarization
+├── understanding/  # Intent extraction: batch pipeline + streaming (WIP)
+├── router/         # Intent → target mapping, rules engine
+├── connectors/
+│   ├── im/         # Feishu, Slack, GitHub, Email  ← open source
+│   └── biz/        # ERP, CRM, WMS connectors      ← commercial
+├── audit/          # Human-in-the-loop confirmation, execution log
+└── feedback/       # Correction loop → model improvement
 ```
+
+Each module ships with a `CONTEXT.md` explaining its purpose, interfaces, and constraints. Designed for agents and humans alike.
 
 ---
 
-## Open Source / Commercial Split
+## Open Source Boundary
 
-### Apache 2.0 (This Repo)
+| Component | License |
+|-----------|---------|
+| Core engine (input → understanding → router → audit) | Apache 2.0 |
+| IM connectors (Feishu, Slack, GitHub, Email) | Apache 2.0 |
+| Business connectors (ERP, CRM, WMS) | Commercial |
+| Industry semantic models | Commercial |
 
-- Input adapters (local, API, upload)
-- Processing pipeline (Whisper, diarization)
-- Intent extraction framework
-- Routing protocol
-- Audit interface
-- **IM Connectors** (飞书, Slack, GitHub, Email)
-
-### Commercial (Closed)
-
-- Business system connectors (旺店通, 聚水潭, 金蝶)
-- Industry-specific semantic models
+The open-source core is fully functional end-to-end. You can run Mainframe with any IM connector without touching the commercial layer.
 
 ---
 
 ## Data Flywheel
 
-> The real moat is not the architecture—it's the data flywheel.
+The real moat is not the architecture. It's what happens after deployment.
 
-Every human correction feeds back into improving intent recognition accuracy for your specific domain.
+Every time a human corrects a routing decision—wrong target, wrong intent label, missed commitment—that correction feeds back into the model. Over time, Mainframe gets calibrated to your organization's specific language, domain, and decision patterns.
+
+This is why `src/mainframe/feedback/` is built from day one, not added later.
+
+---
+
+## Design Principles
+
+- **Conversation-first**: Routing logic is designed around natural language, not structured inputs
+- **Human-in-the-loop by default**: Audit layer ships enabled; automation is opt-in
+- **Upstream/downstream agnostic**: Core protocol doesn't care what's on either end
+- **Agent-friendly codebase**: CONTEXT.md per module, Pydantic contracts, <300 lines/file
 
 ---
 
 ## Quick Start
 
 ```bash
-pip install -e .
+pip install -e ".[dev]"
+# see docs/quickstart.md
 ```
+
+---
+
+## Status
+
+Early development. Architecture is stable. MVP batch pipeline in progress.
+
+If you're building in this space or want to contribute a connector, open an issue.
 
 ---
 
@@ -97,4 +130,4 @@ Apache 2.0 — see [LICENSE](LICENSE).
 
 ---
 
-**The meeting is over. The work begins.**
+*The conversation happened. Make sure it mattered.*
