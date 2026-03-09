@@ -1,77 +1,106 @@
 # mainframe
 
-> Intent routing for the agentic era.
+> Conversation orchestration for the agentic era.
 
-**If IFTTT connected apps, Mainframe connects conversations to agents.**
+Every meeting ends. Most decisions don't go anywhere.
 
----
-
-## What is this?
-
-Mainframe is an **intent routing engine**. It listens to human conversations, extracts structured intent, and routes it to the right agents and systems—automatically.
-
-The upstream can be anything: a meeting, a voice memo, a Slack thread, an email. The downstream can be anything: a task system, a CRM, a GitHub repo, an ERP. The core is the routing layer in between.
-
-```
-[ Conversation ] → [ Intent Extraction ] → [ Router ] → [ Agent / System ]
-```
-
-This is the missing infrastructure layer for the agentic era. LLMs are getting better at acting. What's missing is a reliable way to turn human conversation into structured agent instructions.
+Mainframe is the orchestration layer that changes that—turning conversational output into structured agent tasks, routing them to the right systems and agents, and supervising execution until there's a result.
 
 ---
 
 ## The Problem
 
-Every organization runs agents today—ERP agents, CRM agents, AI assistants. But they're all blind to the highest-density source of human intent: **conversation**.
+Meetings are the highest-density decision-making events in any organization. But today, every meeting ends the same way: someone writes notes, someone else forgets to read them, and half the decisions quietly disappear.
 
-Decisions are made in meetings. Commitments are made in calls. Priorities are set in Slack threads. None of it reaches your agents automatically. Someone has to manually bridge the gap—and most of the time, they don't.
+The root cause isn't that people are lazy. It's that **there's no system designed to receive what a meeting produces.**
 
-Mainframe closes this loop.
+LLMs can now extract decisions, commitments, and open questions from conversation with high accuracy. The missing piece is an orchestration layer that knows what to do with them.
 
----
-
-## How It Works
-
-1. **Ingest** — Connect any conversation source (meeting audio, voice memo, chat transcript, API stream)
-2. **Understand** — Extract structured intent: decisions, action items, queries, commitments, open questions
-3. **Route** — Match intent to target: which agent, which system, which person
-4. **Deliver** — Write to the right place: task created, CRM updated, GitHub issue opened, message sent
-5. **Learn** — Every human correction feeds back into routing accuracy for your domain
+That's Mainframe.
 
 ---
 
-## Use Cases
+## What Mainframe Does
 
-### Meetings → Action
-The highest-signal use case. A 1-hour meeting produces dozens of intents. Mainframe routes all of them without anyone taking notes.
+When a conversation ends, Mainframe:
 
-### Voice Memo → Task
-Record a thought on the way to work. Mainframe extracts the intent and creates the task before you sit down.
+1. **Extracts** — pulls structured intent from the transcript: decisions, action items, open questions, data queries, commitments
+2. **Classifies** — determines what kind of response each intent requires
+3. **Routes** — assigns each item to the right destination:
+   - A human who made a commitment
+   - An external system (CRM, ERP, task tracker)
+   - An agent that can execute or research autonomously
+4. **Orchestrates** — spawns and supervises agents as needed, waits for results, handles failures
+5. **Closes the loop** — surfaces results back to the relevant people and systems
 
-### Support Call → CRM
-Customer says "I need this by Friday." Mainframe writes it to the CRM. No manual entry.
+The conversation is the input. Completed work is the output.
 
-### Engineering Sync → GitHub
-"Let's file a bug for that." Mainframe opens the issue. Assigns it. Labels it.
+---
+
+## Agent-Native Design
+
+Mainframe is built for a world where agents are first-class participants in organizational work.
+
+- **Conversations spawn agents**: When a meeting produces an open question or a research task with no clear human owner, Mainframe can spawn an agent to handle it—not create a to-do that sits in a backlog.
+- **Agents can call Mainframe**: Other agents in your system can use Mainframe's routing protocol to dispatch work that originates from conversation, not just from code.
+- **Supervision is built in**: Spawned agents report back through Mainframe's audit layer. Nothing disappears silently.
+
+This is what separates an orchestrator from a router. A router sends a message. An orchestrator owns the outcome.
+
+---
+
+## The Meeting Use Case
+
+Meetings are the canonical use case—and the hardest one.
+
+A 1-hour meeting produces dozens of intents. Traditional meeting tools turn these into a notes document. Mainframe turns them into:
+
+| Intent Type | What Happens |
+|------------|--------------|
+| Decision made | Written to the relevant system (CRM, ERP, doc) |
+| Commitment by a person | Task created, assigned, tracked |
+| Open question with no owner | Agent spawned to research and report back |
+| Data query raised | Lookup triggered, result surfaced in context |
+| Follow-up needed with someone external | Draft prepared, human confirms before send |
+
+The meeting ends. Mainframe keeps working.
 
 ---
 
 ## Architecture
 
 ```
-src/mainframe/
-├── input/          # Adapters: local mic, system audio, API, file upload
-├── processing/     # Transcription (Whisper), speaker diarization
-├── understanding/  # Intent extraction: batch pipeline + streaming (WIP)
-├── router/         # Intent → target mapping, rules engine
-├── connectors/
-│   ├── im/         # Feishu, Slack, GitHub, Email  ← open source
-│   └── biz/        # ERP, CRM, WMS connectors      ← commercial
-├── audit/          # Human-in-the-loop confirmation, execution log
-└── feedback/       # Correction loop → model improvement
+[ Conversation Input ]
+        ↓
+  [ Understanding ]     ← intent extraction, entity recognition, context
+        ↓
+    [ Router ]          ← classification, target resolution, priority
+        ↓
+  ┌─────┴──────┐
+  ↓            ↓
+[ Connectors ] [ Agent Orchestrator ]
+  IM, CRM,       spawn → supervise → collect
+  ERP, Git       → surface results
+        ↓
+    [ Audit ]           ← human-in-the-loop, execution log
+        ↓
+   [ Feedback ]         ← corrections → model improvement
 ```
 
-Each module ships with a `CONTEXT.md` explaining its purpose, interfaces, and constraints. Designed for agents and humans alike.
+```
+src/mainframe/
+├── input/          # Adapters: API stream, file upload, local audio, webhooks
+├── processing/     # Transcription, speaker diarization
+├── understanding/  # Intent extraction: batch + streaming
+├── router/         # Target resolution, rules engine
+├── connectors/
+│   ├── im/         # Feishu, Slack, GitHub, Email      ← open source
+│   └── biz/        # ERP, CRM, WMS connectors          ← commercial
+├── audit/          # Confirmation layer, execution log
+└── feedback/       # Correction loop → routing improvement
+```
+
+Each module ships with a `CONTEXT.md` defining its purpose, interfaces, and constraints—designed to be readable by agents as well as humans.
 
 ---
 
@@ -79,48 +108,30 @@ Each module ships with a `CONTEXT.md` explaining its purpose, interfaces, and co
 
 | Component | License |
 |-----------|---------|
-| Core engine (input → understanding → router → audit) | Apache 2.0 |
+| Core orchestration engine | Apache 2.0 |
 | IM connectors (Feishu, Slack, GitHub, Email) | Apache 2.0 |
 | Business connectors (ERP, CRM, WMS) | Commercial |
-| Industry semantic models | Commercial |
+| Industry-specific semantic models | Commercial |
 
-The open-source core is fully functional end-to-end. You can run Mainframe with any IM connector without touching the commercial layer.
+The open-source core runs end-to-end. No commercial layer required to get started.
 
 ---
 
 ## Data Flywheel
 
-The real moat is not the architecture. It's what happens after deployment.
+Every correction improves the system.
 
-Every time a human corrects a routing decision—wrong target, wrong intent label, missed commitment—that correction feeds back into the model. Over time, Mainframe gets calibrated to your organization's specific language, domain, and decision patterns.
+When a human overrides a routing decision—wrong target, missed intent, wrong agent assigned—that correction feeds back into the model. Over time, Mainframe becomes calibrated to your organization's specific language, domain, and decision patterns.
 
-This is why `src/mainframe/feedback/` is built from day one, not added later.
-
----
-
-## Design Principles
-
-- **Conversation-first**: Routing logic is designed around natural language, not structured inputs
-- **Human-in-the-loop by default**: Audit layer ships enabled; automation is opt-in
-- **Upstream/downstream agnostic**: Core protocol doesn't care what's on either end
-- **Agent-friendly codebase**: CONTEXT.md per module, Pydantic contracts, <300 lines/file
-
----
-
-## Quick Start
-
-```bash
-pip install -e ".[dev]"
-# see docs/quickstart.md
-```
+This is why `feedback/` is built from day one.
 
 ---
 
 ## Status
 
-Early development. Architecture is stable. MVP batch pipeline in progress.
+Early development. Core architecture is stable. MVP batch pipeline in progress.
 
-If you're building in this space or want to contribute a connector, open an issue.
+If you're building agent infrastructure and want to contribute a connector or discuss the routing protocol, open an issue.
 
 ---
 
@@ -130,4 +141,4 @@ Apache 2.0 — see [LICENSE](LICENSE).
 
 ---
 
-*The conversation happened. Make sure it mattered.*
+*The meeting ended. The work just started.*
