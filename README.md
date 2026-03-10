@@ -14,7 +14,7 @@ Meetings are the highest-density decision-making events in any organization. But
 
 The root cause isn't that people are lazy. It's that **there's no system designed to receive what a meeting produces.**
 
-LLMs can now extract decisions, commitments, and open questions from conversation with high accuracy. The missing piece is an coordination layer that knows what to do with them.
+LLMs can now extract decisions, commitments, and open questions from conversation with high accuracy. The missing piece is a coordination layer that knows what to do with them.
 
 That's Mainframe.
 
@@ -27,43 +27,55 @@ When a conversation ends, Mainframe:
 1. **Extracts** — pulls structured intent from the transcript: decisions, action items, open questions, data queries, commitments
 2. **Classifies** — determines what kind of response each intent requires
 3. **Routes** — assigns each item to the right destination:
-   - A human who made a commitment
-   - An external system (CRM, ERP, task tracker)
-   - An agent that can execute or research autonomously
-4. **Coordinates** — spawns and supervises agents as needed, waits for results, handles failures
-5. **Closes the loop** — surfaces results back to the relevant people and systems
+   - A human who made a commitment → task created and tracked
+   - An open question with no owner → agent spawned to research
+   - A decision made → written to the relevant system
+4. **Audits** — logs every routing decision, surfaces them for human confirmation
+5. **Feeds back** — corrections flow back to improve future routing
 
 The conversation is the input. Completed work is the output.
 
 ---
 
-## Agent-Native Design
+## Quickstart
 
-Mainframe is built for a world where agents are first-class participants in organizational work.
+```bash
+git clone https://github.com/firenzemc/chiefofstaff
+cd chiefofstaff
+pip install -e ".[dev]"
 
-- **Conversations spawn agents**: When a meeting produces an open question or a research task with no clear human owner, Mainframe can spawn an agent to handle it—not create a to-do that sits in a backlog.
-- **Agents can call Mainframe**: Other agents in your system can use Mainframe's routing protocol to dispatch work that originates from conversation, not just from code.
-- **Supervision is built in**: Spawned agents report back through Mainframe's audit layer. Nothing disappears silently.
+# Optional: set your LLM key for real extraction (works without it in mock mode)
+export MAINFRAME_LLM_API_KEY=your_openai_key
 
-This is what separates an coordinator from a router. A router sends a message. An coordinator owns the outcome.
+uvicorn mainframe.main:app --reload
+```
 
----
+Then send a meeting transcript:
 
-## The Meeting Use Case
+```bash
+curl -X POST http://localhost:8000/analyze \
+  -H "Content-Type: application/json" \
+  -d '{
+    "text": "We decided to go with vendor A. Sarah will follow up on the contract by Friday. Still open: do we need a backup supplier?"
+  }'
+```
 
-Meetings are the canonical use case—and the hardest one.
+Response:
 
-A 1-hour meeting produces dozens of intents. Traditional meeting tools turn these into a notes document. Mainframe turns them into:
-
-| Intent Type | What Happens |
-|------------|--------------|
-| Decision made | Written to the relevant system (CRM, ERP, doc) |
-| Commitment by a person | Task created, assigned, tracked |
-| Open question with no owner | Agent spawned to research and report back |
-| Data query raised | Lookup triggered, result surfaced in context |
-| Follow-up needed with someone external | Draft prepared, human confirms before send |
-
-The conversation ends. Mainframe keeps working.
+```json
+{
+  "meeting_id": "meeting-a1b2c3d4",
+  "summary": "Vendor A selected. Contract follow-up assigned to Sarah by Friday. Backup supplier question open.",
+  "decisions": [{"text": "Go with vendor A", ...}],
+  "action_items": [{"text": "Sarah to follow up on contract by Friday", ...}],
+  "open_questions": [{"text": "Do we need a backup supplier?", ...}],
+  "routes": [
+    {"intent_type": "decision", "target": "document", ...},
+    {"intent_type": "action_item", "target": "task_tracker", ...},
+    {"intent_type": "open_question", "target": "agent", ...}
+  ]
+}
+```
 
 ---
 
@@ -72,35 +84,56 @@ The conversation ends. Mainframe keeps working.
 ```
 [ Conversation Input ]
         ↓
-  [ Understanding ]     ← intent extraction, entity recognition, context
+  [ Understanding ]     ← intent extraction via LLM (batch or streaming)
         ↓
-    [ Router ]          ← classification, target resolution, priority
+    [ Router ]          ← rule-based: intent type → target system
         ↓
-  ┌─────┴──────┐
-  ↓            ↓
-[ Connectors ] [ Agent Coordinator ]
-  IM, CRM,       spawn → supervise → collect
-  ERP, Git       → surface results
+  ┌─────┴────────┐
+  ↓              ↓
+[Connectors]  [Agent Coordinator]    ← routes each intent
+  IM, tasks,    spawn → supervise
+  docs, ERP     → collect results
         ↓
     [ Audit ]           ← human-in-the-loop, execution log
         ↓
-   [ Feedback ]         ← corrections → model improvement
+   [ Feedback ]         ← corrections → routing improvement
 ```
 
 ```
 src/mainframe/
-├── input/          # Adapters: API stream, file upload, local audio, webhooks
-├── processing/     # Transcription, speaker diarization
-├── understanding/  # Intent extraction: batch + streaming
-├── router/         # Target resolution, rules engine
+├── main.py             # FastAPI app — POST /analyze, GET /health
+├── config.py           # Pydantic settings (MAINFRAME_ env prefix)
+├── api/                # Request / response schemas
+├── input/              # Adapters: API, file upload, local audio, webhooks
+├── processing/         # Transcription (Whisper), speaker diarization
+├── understanding/
+│   ├── batch/          # Intent extraction pipeline (MVP — ships now)
+│   └── streaming/      # Real-time pipeline (Phase 2 — placeholder)
+├── router/             # Rule engine: intent type → route target
 ├── connectors/
-│   ├── im/         # Feishu, Slack, GitHub, Email      ← open source
-│   └── biz/        # ERP, CRM, WMS connectors          ← commercial
-├── audit/          # Confirmation layer, execution log
-└── feedback/       # Correction loop → routing improvement
+│   ├── base.py         # Connector protocol
+│   ├── mock.py         # In-memory mock (default)
+│   ├── im/             # Feishu, Slack, GitHub, Email   ← open source
+│   └── biz/            # ERP, CRM, WMS connectors       ← commercial
+├── audit/              # Pipeline run lifecycle, confirmation layer
+└── feedback/           # Correction loop → model improvement
 ```
 
-Each module ships with a `CONTEXT.md` defining its purpose, interfaces, and constraints—designed to be readable by agents as well as humans.
+Each module ships with a `CONTEXT.md` defining its purpose, interfaces, and constraints — readable by agents as well as humans.
+
+---
+
+## Intent Types
+
+| Type | Default Route |
+|------|--------------|
+| `decision` | Document store |
+| `action_item` | Task tracker (with assignee) |
+| `open_question` | Agent (research and report back) |
+| `commitment` | Task tracker (with due date) |
+| `info` | No action |
+
+Routing rules are configurable. The default ruleset lives in `router/default_rules.py`.
 
 ---
 
@@ -108,12 +141,27 @@ Each module ships with a `CONTEXT.md` defining its purpose, interfaces, and cons
 
 | Component | License |
 |-----------|---------|
-| Core coordination engine | Apache 2.0 |
+| Core pipeline (understanding, routing, audit) | Apache 2.0 |
 | IM connectors (Feishu, Slack, GitHub, Email) | Apache 2.0 |
 | Business connectors (ERP, CRM, WMS) | Commercial |
 | Industry-specific semantic models | Commercial |
 
-The open-source core runs end-to-end. No commercial layer required to get started.
+The open-source core runs end-to-end with `MockConnector`. No commercial layer required to get started.
+
+---
+
+## Configuration
+
+All settings use the `MAINFRAME_` prefix:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `MAINFRAME_LLM_API_KEY` | — | OpenAI-compatible API key. If unset, falls back to mock extraction |
+| `MAINFRAME_LLM_BASE_URL` | `https://api.openai.com/v1` | Base URL for LLM calls |
+| `MAINFRAME_LLM_MODEL` | `gpt-4o-mini` | Model used for intent extraction |
+| `MAINFRAME_APP_HOST` | `0.0.0.0` | Server host |
+| `MAINFRAME_APP_PORT` | `8000` | Server port |
+| `MAINFRAME_DEBUG` | `false` | Enable hot reload |
 
 ---
 
@@ -121,15 +169,25 @@ The open-source core runs end-to-end. No commercial layer required to get starte
 
 Every correction improves the system.
 
-When a human overrides a routing decision—wrong target, missed intent, wrong agent assigned—that correction feeds back into the model. Over time, Mainframe becomes calibrated to your organization's specific language, domain, and decision patterns.
+When a human overrides a routing decision — wrong target, missed intent, wrong assignee — that correction feeds back into the model. Over time, Mainframe becomes calibrated to your organization's specific language, domain, and decision patterns.
 
-This is why `feedback/` is built from day one.
+This is why `feedback/` is built from day one, not bolted on later.
 
 ---
 
 ## Status
 
-Early development. Core architecture is stable. MVP batch pipeline in progress.
+**MVP: batch pipeline** — ships now.
+
+- [x] Intent extraction (LLM + mock fallback)
+- [x] Rule-based router
+- [x] Audit logger
+- [x] FastAPI endpoints (`POST /analyze`, `GET /health`)
+- [x] Feedback collector
+- [x] 57 tests, 84% coverage
+- [ ] Audio input (Whisper) — Phase 2
+- [ ] Real connectors (Feishu tasks, GitHub issues) — Phase 2
+- [ ] Streaming pipeline — Phase 2
 
 If you're building agent infrastructure and want to contribute a connector or discuss the routing protocol, open an issue.
 
