@@ -22,6 +22,10 @@ class Settings(BaseSettings):
     app_port: int = 8000
     debug: bool = False
 
+    # Storage
+    audit_db_path: str = "mainframe_audit.db"
+    memory_db_path: str = "mainframe_memory.db"
+
 
 # Singleton — import ``settings`` wherever you need config.
 settings = Settings()

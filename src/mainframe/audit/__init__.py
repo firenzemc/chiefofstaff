@@ -1,4 +1,21 @@
 from .logger import AuditLogger
-from .models import PipelineRun, PipelineRunStatus
+from .models import (
+    ExecutionRecord,
+    ExecutionStatus,
+    PipelineRun,
+    PipelineRunStatus,
+    RiskLevel,
+)
+from .risk import RiskAssessor
+from .store import AuditStore
 
-__all__ = ["AuditLogger", "PipelineRun", "PipelineRunStatus"]
+__all__ = [
+    "AuditLogger",
+    "AuditStore",
+    "ExecutionRecord",
+    "ExecutionStatus",
+    "PipelineRun",
+    "PipelineRunStatus",
+    "RiskAssessor",
+    "RiskLevel",
+]
