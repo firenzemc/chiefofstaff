@@ -99,6 +99,7 @@ class ExecutionRecord(BaseModel):
     risk_reason: str = ""
     approved_by: Optional[str] = None
     approved_at: Optional[datetime] = None
+    expires_at: Optional[datetime] = None  # approval deadline for AWAITING_APPROVAL
 
     # Execution
     status: ExecutionStatus = ExecutionStatus.PENDING

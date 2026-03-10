@@ -154,3 +154,148 @@ class TestExecutionEndpoints:
         resp = await client.get("/approvals/pending")
         assert resp.status_code == 200
         assert resp.json()["pending"] == []
+
+
+class TestApprovalWhitelist:
+    """P0-1: Approver identity check."""
+
+    @pytest.mark.asyncio
+    async def test_approve_rejected_by_whitelist(self, client):
+        """Non-whitelisted user gets 403."""
+        import mainframe.main as m
+        from mainframe.config import Settings
+
+        # Patch settings with a whitelist
+        original = m.settings
+        m.settings = Settings(approvers="alice,bob")
+
+        # Create a pending approval record directly
+        from mainframe.audit.models import ExecutionRecord, ExecutionStatus, RiskLevel
+        from datetime import datetime, timedelta, timezone
+        rec = ExecutionRecord(
+            record_id="test-approval-1", meeting_id="m1", run_id="r1",
+            intent_id="i1", intent_type="decision",
+            source_speaker="Alice", source_text="launch",
+            source_timestamp=1.0, confidence=0.9,
+            target="document", rule_id="r1",
+            risk_level=RiskLevel.HIGH, risk_reason="test",
+            status=ExecutionStatus.AWAITING_APPROVAL,
+            expires_at=datetime.now(timezone.utc) + timedelta(hours=24),
+        )
+        await m._audit_store.save_execution(rec)
+
+        resp = await client.post("/approvals/test-approval-1/approve?approved_by=mallory")
+        assert resp.status_code == 403
+        assert "not in the approved" in resp.json()["detail"]
+
+        m.settings = original
+
+    @pytest.mark.asyncio
+    async def test_approve_accepted_by_whitelist(self, client):
+        """Whitelisted user can approve."""
+        import mainframe.main as m
+        from mainframe.config import Settings
+
+        original = m.settings
+        m.settings = Settings(approvers="alice,bob")
+
+        from mainframe.audit.models import ExecutionRecord, ExecutionStatus, RiskLevel
+        from datetime import datetime, timedelta, timezone
+        rec = ExecutionRecord(
+            record_id="test-approval-2", meeting_id="m1", run_id="r1",
+            intent_id="i1", intent_type="decision",
+            source_speaker="Alice", source_text="launch",
+            source_timestamp=1.0, confidence=0.9,
+            target="document", rule_id="r1",
+            risk_level=RiskLevel.HIGH, risk_reason="test",
+            status=ExecutionStatus.AWAITING_APPROVAL,
+            expires_at=datetime.now(timezone.utc) + timedelta(hours=24),
+        )
+        await m._audit_store.save_execution(rec)
+
+        resp = await client.post("/approvals/test-approval-2/approve?approved_by=alice")
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "approved_and_executed"
+
+        m.settings = original
+
+    @pytest.mark.asyncio
+    async def test_approve_no_whitelist_allows_anyone(self, client):
+        """When MAINFRAME_APPROVERS is empty, any approved_by is accepted."""
+        import mainframe.main as m
+        from mainframe.audit.models import ExecutionRecord, ExecutionStatus, RiskLevel
+        from datetime import datetime, timedelta, timezone
+        rec = ExecutionRecord(
+            record_id="test-approval-3", meeting_id="m1", run_id="r1",
+            intent_id="i1", intent_type="decision",
+            source_speaker="Alice", source_text="launch",
+            source_timestamp=1.0, confidence=0.9,
+            target="document", rule_id="r1",
+            risk_level=RiskLevel.HIGH, risk_reason="test",
+            status=ExecutionStatus.AWAITING_APPROVAL,
+            expires_at=datetime.now(timezone.utc) + timedelta(hours=24),
+        )
+        await m._audit_store.save_execution(rec)
+        resp = await client.post("/approvals/test-approval-3/approve?approved_by=anyone")
+        assert resp.status_code == 200
+
+
+class TestApprovalExpiry:
+    """P0-3: Approval timeout / expiry."""
+
+    @pytest.mark.asyncio
+    async def test_expired_approval_rejected(self, client):
+        """Expired AWAITING_APPROVAL record returns 410."""
+        import mainframe.main as m
+        from mainframe.audit.models import ExecutionRecord, ExecutionStatus, RiskLevel
+        from datetime import datetime, timedelta, timezone
+        rec = ExecutionRecord(
+            record_id="test-expired-1", meeting_id="m1", run_id="r1",
+            intent_id="i1", intent_type="decision",
+            source_speaker="Alice", source_text="launch",
+            source_timestamp=1.0, confidence=0.9,
+            target="document", rule_id="r1",
+            risk_level=RiskLevel.HIGH, risk_reason="test",
+            status=ExecutionStatus.AWAITING_APPROVAL,
+            expires_at=datetime.now(timezone.utc) - timedelta(hours=1),  # already expired
+        )
+        await m._audit_store.save_execution(rec)
+        resp = await client.post("/approvals/test-expired-1/approve?approved_by=human")
+        assert resp.status_code == 410
+        assert "expired" in resp.json()["detail"]
+
+    @pytest.mark.asyncio
+    async def test_overdue_endpoint(self, client):
+        """GET /approvals/overdue returns expired approvals."""
+        import mainframe.main as m
+        from mainframe.audit.models import ExecutionRecord, ExecutionStatus, RiskLevel
+        from datetime import datetime, timedelta, timezone
+        # One expired, one not
+        expired = ExecutionRecord(
+            record_id="overdue-1", meeting_id="m1", run_id="r1",
+            intent_id="i1", intent_type="decision",
+            source_speaker="Alice", source_text="launch",
+            source_timestamp=1.0, confidence=0.9,
+            target="document", rule_id="r1",
+            risk_level=RiskLevel.HIGH, risk_reason="test",
+            status=ExecutionStatus.AWAITING_APPROVAL,
+            expires_at=datetime.now(timezone.utc) - timedelta(hours=2),
+        )
+        active = ExecutionRecord(
+            record_id="active-1", meeting_id="m1", run_id="r1",
+            intent_id="i1", intent_type="decision",
+            source_speaker="Alice", source_text="launch",
+            source_timestamp=1.0, confidence=0.9,
+            target="document", rule_id="r1",
+            risk_level=RiskLevel.HIGH, risk_reason="test",
+            status=ExecutionStatus.AWAITING_APPROVAL,
+            expires_at=datetime.now(timezone.utc) + timedelta(hours=22),
+        )
+        await m._audit_store.save_execution(expired)
+        await m._audit_store.save_execution(active)
+
+        resp = await client.get("/approvals/overdue")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data["overdue"]) == 1
+        assert data["overdue"][0]["record_id"] == "overdue-1"

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import uuid
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import uvicorn
@@ -224,6 +224,10 @@ async def analyze(request: AnalyzeRequest):
                 risk_reason=risk_reason,
                 status=initial_status,
                 rollback_hint=rollback_hint,
+                expires_at=(
+                    datetime.now(timezone.utc) + timedelta(hours=settings.approval_timeout_hours)
+                    if initial_status == ExecutionStatus.AWAITING_APPROVAL else None
+                ),
             )
 
             # Execute if auto-approved (LOW / MEDIUM)
@@ -295,13 +299,30 @@ async def get_pending_approvals():
 
 @app.post("/approvals/{record_id}/approve")
 async def approve_execution(record_id: str, approved_by: str = "human"):
-    """Approve a pending execution and execute it."""
+    """Approve a pending execution and execute it.
+
+    Requires ``approved_by`` to be in the MAINFRAME_APPROVERS whitelist
+    (when configured). Rejects expired approvals.
+    """
+    # P0-1: Whitelist check
+    if settings.approver_list and approved_by.strip().lower() not in settings.approver_list:
+        raise HTTPException(
+            status_code=403,
+            detail=f"User '{approved_by}' is not in the approved approvers list",
+        )
+
     record = await _audit_store.get_execution(record_id)
     if record is None:
         raise HTTPException(status_code=404, detail="Execution record not found")
     if record.status != ExecutionStatus.AWAITING_APPROVAL:
         raise HTTPException(
             status_code=400, detail=f"Cannot approve: status is {record.status.value}"
+        )
+
+    # P0-3: Expiry check
+    if record.expires_at and datetime.now(timezone.utc) > record.expires_at:
+        raise HTTPException(
+            status_code=410, detail="Approval window has expired"
         )
 
     route = RouteResult(
@@ -326,6 +347,13 @@ async def approve_execution(record_id: str, approved_by: str = "human"):
         execution_result=result,
     )
     return {"status": "approved_and_executed", "record": updated.model_dump()}
+
+
+@app.get("/approvals/overdue")
+async def get_overdue_approvals():
+    """Get all AWAITING_APPROVAL records whose deadline has passed."""
+    records = await _audit_store.get_overdue_approvals()
+    return {"overdue": [r.model_dump() for r in records]}
 
 
 # ---------------------------------------------------------------------------

@@ -172,7 +172,7 @@ class TestEntityMemoryStore:
 
 class TestCommitmentMatcher:
     def setup_method(self):
-        self.matcher = CommitmentMatcher(overlap_threshold=0.3)
+        self.matcher = CommitmentMatcher(overlap_threshold=0.5)
 
     def _open_commitments(self):
         return [
@@ -227,3 +227,41 @@ class TestCommitmentMatcher:
         intent = _intent("prepare the docs", speaker="alice")
         result = self.matcher.match(intent, self._open_commitments())
         assert result is not None
+
+    # --- P0-2: Anti-match (false positive) regression tests ---
+
+    def test_no_false_positive_different_topic(self):
+        """Intent about 'servers' must NOT match commitment about 'docs'."""
+        intent = _intent("set up new servers for deployment", speaker="Alice")
+        result = self.matcher.match(intent, self._open_commitments())
+        assert result is None
+
+    def test_no_false_positive_partial_word_overlap(self):
+        """Sharing one content word ('review') is insufficient at 50% threshold."""
+        commitments = [_commitment("c1", owner="Alice", content="review quarterly budget report")]
+        intent = _intent("review the deployment checklist before launch", speaker="Alice")
+        result = self.matcher.match(intent, commitments)
+        assert result is None
+
+    def test_no_false_positive_common_verbs_only(self):
+        """Two sentences sharing only common verbs should not match."""
+        commitments = [_commitment("c1", owner="Alice", content="prepare slides for keynote")]
+        intent = _intent("prepare agenda for standup", speaker="Alice")
+        result = self.matcher.match(intent, commitments)
+        assert result is None
+
+    def test_true_positive_high_overlap(self):
+        """Very similar content with same owner should match."""
+        commitments = [_commitment("c1", owner="Alice", content="finalize budget report")]
+        intent = _intent("finalize the budget report draft", speaker="Alice")
+        result = self.matcher.match(intent, commitments)
+        assert result is not None
+        assert result.commitment_id == "c1"
+
+    def test_threshold_boundary_below(self):
+        """Overlap exactly below threshold → no match."""
+        # 'prepare' is the only shared token between these (1 / 3 = 0.33 < 0.5)
+        commitments = [_commitment("c1", owner="Alice", content="prepare slides keynote")]
+        intent = _intent("prepare agenda standup", speaker="Alice")
+        result = self.matcher.match(intent, commitments)
+        assert result is None

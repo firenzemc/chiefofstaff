@@ -40,7 +40,7 @@ class CommitmentMatcher:
 
     MATCHABLE_TYPES = {IntentType.ACTION_ITEM, IntentType.COMMITMENT}
 
-    def __init__(self, overlap_threshold: float = 0.3):
+    def __init__(self, overlap_threshold: float = 0.5):
         self.overlap_threshold = overlap_threshold
 
     def match(
