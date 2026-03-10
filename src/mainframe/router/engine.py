@@ -49,6 +49,11 @@ class RoutingEngine:
                     target=rule.target,
                     rule_id=rule.id,
                     payload=self._build_payload(intent, rule.target),
+                    # Provenance
+                    source_speaker=intent.speaker,
+                    source_text=intent.content,
+                    source_timestamp=intent.timestamp,
+                    confidence=intent.confidence,
                 )
             )
 

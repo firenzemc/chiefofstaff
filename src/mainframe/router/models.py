@@ -38,6 +38,12 @@ class RouteResult(BaseModel):
     rule_id: str
     payload: dict = Field(default_factory=dict)
 
+    # Provenance — carried from the source intent (Phase 2A)
+    source_speaker: str = ""
+    source_text: str = ""
+    source_timestamp: float = 0.0
+    confidence: float = 0.0
+
 
 class RoutingPlan(BaseModel):
     """Complete routing plan for a meeting analysis."""

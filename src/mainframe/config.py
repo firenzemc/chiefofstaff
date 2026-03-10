@@ -22,6 +22,23 @@ class Settings(BaseSettings):
     app_port: int = 8000
     debug: bool = False
 
+    # Storage
+    audit_db_path: str = "mainframe_audit.db"
+    memory_db_path: str = "mainframe_memory.db"
+
+    # Approval whitelist — comma-separated list of trusted approver names
+    approvers: str = ""
+
+    # Approval timeout in hours (default 24h)
+    approval_timeout_hours: int = 24
+
+    @property
+    def approver_list(self) -> list[str]:
+        """Parsed list of allowed approver identities."""
+        if not self.approvers.strip():
+            return []
+        return [a.strip().lower() for a in self.approvers.split(",") if a.strip()]
+
 
 # Singleton — import ``settings`` wherever you need config.
 settings = Settings()
